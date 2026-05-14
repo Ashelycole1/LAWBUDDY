@@ -1,0 +1,19 @@
+/Law Buddy
+├── Project_Manifest.md
+├── pubspec.yaml
+├── constitution.json
+├── assets/
+│   └── data/
+│       └── constitution_enriched.json (planned)
+└── lib/
+    ├── main.dart
+    ├── models/
+    │   ├── article_model.dart
+    │   └── article_model.g.dart
+    ├── screens/
+    │   ├── home_screen.dart
+    │   ├── article_detail_screen.dart
+    │   └── pro_view_screen.dart
+    └── services/
+        ├── database_service.dart
+        └── ai_service.dart
