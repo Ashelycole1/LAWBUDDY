@@ -2,7 +2,15 @@ import 'dart:convert';
 import 'dart:io';
 
 void main() async {
-  const apiKey = "AIzaSyBezS0KLpc1noyhJK6NDbmMhFwG7KBBLo4";
+  // API key is injected via --dart-define=GEMINI_API_KEY=...
+  // Never hardcode secrets here.
+  const apiKey = String.fromEnvironment('GEMINI_API_KEY');
+
+  if (apiKey.isEmpty) {
+    print('Error: GEMINI_API_KEY not set. Run with --dart-define=GEMINI_API_KEY=YOUR_KEY');
+    exit(1);
+  }
+
   final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey');
   
   try {
@@ -16,7 +24,6 @@ void main() async {
       
       print('Available Models:');
       for (var model in models) {
-        // Only show models that support generateContent
         final methods = model['supportedGenerationMethods'] as List?;
         if (methods != null && methods.contains('generateContent')) {
           print('- ${model['name']}');
