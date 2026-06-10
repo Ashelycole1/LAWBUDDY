@@ -96,8 +96,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
     
-    // Fallback key - use env variables for production!
-    const apiKey = "AIzaSyBezS0KLpc1noyhJK6NDbmMhFwG7KBBLo4"; 
+    // API key injected at build time via --dart-define=GEMINI_API_KEY=...
+    // For Vercel: set GEMINI_API_KEY as an Environment Variable in the dashboard.
+    const apiKey = String.fromEnvironment('GEMINI_API_KEY');
     final aiService = AIService(apiKey: apiKey, dbService: widget.dbService);
     
     final responseStream = aiService.askLegalQuestionStream(question);
