@@ -1,20 +1,46 @@
+import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
 import '../models/article_model.dart';
 import 'database_service.dart';
 
 class AIService {
-  final String apiKey;
+  final String geminiApiKey;
+  final String groqApiKey;
+  final String openRouterApiKey;
   final DatabaseService dbService;
-  late GenerativeModel model;
+  GenerativeModel? model;
 
-  AIService({required this.apiKey, required this.dbService}) {
-    model = GenerativeModel(
-      model: 'gemini-2.5-flash',
-      apiKey: apiKey,
-    );
+  static const List<String> _groqModels = [
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    'mixtral-8x7b-32768',
+    'gemma2-9b-it',
+  ];
+
+  static const List<String> _openRouterModels = [
+    'google/gemma-2-9b-it:free',
+    'meta-llama/llama-3-8b-instruct:free',
+    'mistralai/mistral-7b-instruct:free',
+    'microsoft/phi-3-mini-128k-instruct:free',
+    'qwen/qwen-2-7b-instruct:free',
+  ];
+
+  AIService({
+    required this.geminiApiKey,
+    required this.groqApiKey,
+    required this.openRouterApiKey,
+    required this.dbService,
+  }) {
+    if (geminiApiKey.isNotEmpty) {
+      model = GenerativeModel(
+        model: 'gemini-2.5-flash',
+        apiKey: geminiApiKey,
+      );
+    }
   }
 
-  /// The RAG (Retrieval-Augmented Generation) Pipeline - STREAMING
+  /// The RAG (Retrieval-Augmented Generation) Pipeline - STREAMING with fallbacks
   Stream<String> askLegalQuestionStream(String question) async* {
     // 1. Retrieve relevant articles from in-memory DB
     final List<ArticleModel> contextArticles = await dbService.search(question);
@@ -27,8 +53,7 @@ class AIService {
         : 'No matching articles found.';
 
     // 3. Build the hardened System Prompt
-    final prompt = [
-      Content.text('''
+    final systemPrompt = '''
 IDENTITY — YOU ARE LAW BUDDY AI:
 You are "Law Buddy AI", a dedicated AI legal advisor created exclusively for the 1995 Constitution of Uganda. You were built by the RENOA team to help Ugandan citizens understand their constitutional rights.
 
@@ -58,20 +83,130 @@ $contextText
 
 USER QUESTION:
 $question
-''')
-    ];
+''';
 
-    // 4. Generate Streaming Response
-    try {
-      final responseStream = model.generateContentStream(prompt);
-      await for (final chunk in responseStream) {
-        if (chunk.text != null) {
-          // Strip any markdown asterisks the model might force in
-          yield chunk.text!.replaceAll('*', '').replaceAll('#', '');
+    bool hasYielded = false;
+
+    // --- 1. TRY GEMINI ---
+    if (geminiApiKey.isNotEmpty && model != null) {
+      try {
+        final responseStream = model!.generateContentStream([Content.text(systemPrompt)]);
+        await for (final chunk in responseStream) {
+          if (chunk.text != null && chunk.text!.isNotEmpty) {
+            hasYielded = true;
+            yield chunk.text!.replaceAll('*', '').replaceAll('#', '');
+          }
+        }
+        if (hasYielded) return; // Succeeded!
+      } catch (e) {
+        print("Gemini failed, trying fallbacks: $e");
+      }
+    }
+
+    // --- 2. TRY GROQ ---
+    if (groqApiKey.isNotEmpty && !hasYielded) {
+      for (final groqModel in _groqModels) {
+        try {
+          final responseStream = _streamOpenAICompatible(
+            'https://api.groq.com/openai/v1/chat/completions',
+            groqApiKey,
+            groqModel,
+            systemPrompt,
+          );
+          await for (final chunk in responseStream) {
+            if (chunk.isNotEmpty) {
+              hasYielded = true;
+              yield chunk.replaceAll('*', '').replaceAll('#', '');
+            }
+          }
+          if (hasYielded) return; // Succeeded!
+        } catch (e) {
+          print("Groq model $groqModel failed: $e");
         }
       }
-    } catch (e) {
-      yield 'Error connecting to AI: $e';
+    }
+
+    // --- 3. TRY OPENROUTER ---
+    if (openRouterApiKey.isNotEmpty && !hasYielded) {
+      for (final openRouterModel in _openRouterModels) {
+        try {
+          final responseStream = _streamOpenAICompatible(
+            'https://openrouter.ai/api/v1/chat/completions',
+            openRouterApiKey,
+            openRouterModel,
+            systemPrompt,
+          );
+          await for (final chunk in responseStream) {
+            if (chunk.isNotEmpty) {
+              hasYielded = true;
+              yield chunk.replaceAll('*', '').replaceAll('#', '');
+            }
+          }
+          if (hasYielded) return; // Succeeded!
+        } catch (e) {
+          print("OpenRouter model $openRouterModel failed: $e");
+        }
+      }
+    }
+
+    // If nothing succeeded, yield a friendly error
+    if (!hasYielded) {
+      yield "Error connecting to AI: All AI services (Gemini, Groq, OpenRouter) are currently rate-limited or unavailable. Please try again in a few moments.";
+    }
+  }
+
+  /// Streams responses from OpenAI-compatible APIs (Groq, OpenRouter)
+  Stream<String> _streamOpenAICompatible(
+      String url, String apiKey, String model, String prompt) async* {
+    final client = http.Client();
+    try {
+      final request = http.Request('POST', Uri.parse(url));
+      request.headers['Content-Type'] = 'application/json';
+      request.headers['Authorization'] = 'Bearer $apiKey';
+      if (url.contains('openrouter')) {
+        request.headers['HTTP-Referer'] = 'https://law-buddy.vercel.app';
+        request.headers['X-Title'] = 'Law Buddy';
+      }
+
+      request.body = jsonEncode({
+        "model": model,
+        "messages": [
+          {"role": "user", "content": prompt}
+        ],
+        "stream": true,
+      });
+
+      final streamedResponse = await client.send(request);
+      if (streamedResponse.statusCode != 200) {
+        throw Exception(
+            'Failed with status code: ${streamedResponse.statusCode}');
+      }
+
+      final stream = streamedResponse.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+
+      await for (final line in stream) {
+        if (line.trim().isEmpty) continue;
+        if (line.startsWith('data: ')) {
+          final data = line.substring(6).trim();
+          if (data == '[DONE]') {
+            break;
+          }
+          try {
+            final decoded = jsonDecode(data);
+            final content =
+                decoded['choices']?[0]?['delta']?['content'] as String?;
+            if (content != null && content.isNotEmpty) {
+              yield content;
+            }
+          } catch (_) {
+            // Ignore format errors of partial lines
+          }
+        }
+      }
+    } finally {
+      client.close();
     }
   }
 }

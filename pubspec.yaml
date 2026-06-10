@@ -16,10 +16,12 @@ dependencies:
   # Utility
   shared_preferences: ^2.2.1
   google_fonts: ^6.1.0
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true

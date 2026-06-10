@@ -160,8 +160,15 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    const apiKey = String.fromEnvironment('GEMINI_API_KEY');
-    final aiService = AIService(apiKey: apiKey, dbService: widget.dbService);
+    const geminiKey = String.fromEnvironment('GEMINI_API_KEY');
+    const groqKey = String.fromEnvironment('GROQ_API_KEY');
+    const openRouterKey = String.fromEnvironment('OPENROUTER_API_KEY');
+    final aiService = AIService(
+      geminiApiKey: geminiKey,
+      groqApiKey: groqKey,
+      openRouterApiKey: openRouterKey,
+      dbService: widget.dbService,
+    );
 
     final responseStream = aiService.askLegalQuestionStream(question);
 
