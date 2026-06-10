@@ -1,24 +1,21 @@
-import 'package:isar/isar.dart';
-
-part 'article_model.g.dart';
-
-@collection
+/// A plain Dart model for a constitution article/objective.
+/// No native DB annotations — works on web, mobile and desktop.
 class ArticleModel {
-  Id id = Isar.autoIncrement;
+  final String number;
+  final String title;
+  final String officialText;
+  final String simpleSummary;
+  final List<String> keywords;
+  final String chapter;
+  final String type; // "article", "objective", "schedule"
 
-  @Index(type: IndexType.value)
-  late String number;
-
-  late String title;
-  
-  late String officialText;
-  
-  late String simpleSummary;
-  
-  late List<String> keywords;
-  
-  late String chapter;
-  
-  @Index(type: IndexType.value)
-  late String type; // "article", "objective", "schedule"
+  ArticleModel({
+    required this.number,
+    required this.title,
+    required this.officialText,
+    required this.simpleSummary,
+    required this.keywords,
+    required this.chapter,
+    required this.type,
+  });
 }

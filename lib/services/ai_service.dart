@@ -16,7 +16,7 @@ class AIService {
 
   /// The RAG (Retrieval-Augmented Generation) Pipeline - STREAMING
   Stream<String> askLegalQuestionStream(String question) async* {
-    // 1. Retrieve relevant articles from Local DB (Isar)
+    // 1. Retrieve relevant articles from in-memory DB
     final List<ArticleModel> contextArticles = await dbService.search(question);
     
     if (contextArticles.isEmpty) {
